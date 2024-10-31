@@ -37,14 +37,14 @@ def plot_movie_ratings(movie1, movie2, movie1_title, movie2_title, title= ""):
     
     plt.xlabel('Rating')
     plt.ylabel('Frequency')
-    plt.title(f'Ratings for {title}')
+    plt.title(title)
     plt.xticks(ratings)  # Set x-ticks to exact rating points
     plt.legend()
     plt.show()
 
 
 # Function to do multiple comparisons
-def group_comparison(movie, field, filter, filter1_value, filter2_value, plot_title = ""):
+def group_comparison(movie, filter, filter1_value, filter2_value):
     
     # Get the data for group1
     query = f"SELECT `{movie}` FROM movieRatings where `{filter}` = {filter1_value} and `{movie}` is not null"
@@ -54,13 +54,14 @@ def group_comparison(movie, field, filter, filter1_value, filter2_value, plot_ti
     query = f"SELECT `{movie}` FROM movieRatings where `{filter}` = {filter2_value} and `{movie}` is not null"
     group2_ratings = pd.read_sql(query, conn)
     
-    if plot_title != "":
-        plot_movie_ratings(group1_ratings, group2_ratings, "female ratings", "male ratings", plot_title)
+    # if plot_title != "":
+    #     plot_movie_ratings(group1_ratings, group2_ratings, "female ratings", "male ratings", plot_title)
     
     # Store the statistics for the movie
     # print(movie)
     # print(stats.ttest_ind(female_ratings, male_ratings))
-    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, field] = stats.ttest_ind(group1_ratings, group2_ratings)[1][0]
+    return group1_ratings, group2_ratings
+    # ratings_summary_df.loc[ratings_summary_df['movie'] == movie, field] = stats.ttest_ind(group1_ratings, group2_ratings)[1][0]
     
     
 
@@ -120,39 +121,53 @@ movies = ratings_summary_df["movie"].tolist()
 
 # Run the list of movies through the fuction
 for movie in movies:
-    group_comparison(movie, "genders_pvalue", "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2)
-    group_comparison(movie, "onlychild_pvalue", "Are you an only child? (1: Yes; 0: No; -1: Did not respond)",1,0)
-    group_comparison(movie, "socialeffect_pvalue", "Movies are best enjoyed alone (1: Yes; 0: No; -1: Did not respond)",1,0)
+    group1_ratings, group2_ratings =group_comparison(movie, "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2)
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "genders_pvalue"] = stats.kstest(group1_ratings, group2_ratings)[1][0]
+    
+    group1_ratings, group2_ratings =group_comparison(movie, "Are you an only child? (1: Yes; 0: No; -1: Did not respond)",1,0)
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "onlychild_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1][0]
+    
+    group1_ratings, group2_ratings =group_comparison(movie, "Movies are best enjoyed alone (1: Yes; 0: No; -1: Did not respond)",1,0)
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "socialeffect_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1][0]
     
 
 
 # Problem 3 and 4
 # Pvalue for Shrek
 ratings_summary_df[ratings_summary_df["movie"] == "Shrek (2001)"]["genders_pvalue"]
-# 0.270875
-group_comparison("Shrek (2001)", "genders_pvalue", "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2,plot_title="Shrek by Gender")
+# 0.050537
+female_ratings, male_ratings = group_comparison("Shrek (2001)", "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2)
+plot_movie_ratings(female_ratings, male_ratings, "Female Ratings", "Male Ratings", title= "Shrek Ratings by Gender")
+
 
 # Percent of movies that differ by gender
 len(ratings_summary_df[ratings_summary_df["genders_pvalue"] < .05]) /MOVIE_COUNT
-# 0.31
+# 0.16
 
 # Problem 5 and 6
 # Pvalue for Lion King
 ratings_summary_df[ratings_summary_df["movie"] == "The Lion King (1994)"]["onlychild_pvalue"]
 # 0.040267
+onlychild_ratings, notonlychild_ratings = group_comparison("The Lion King (1994)", "Are you an only child? (1: Yes; 0: No; -1: Did not respond)",1,0)
+plot_movie_ratings(onlychild_ratings, notonlychild_ratings, "Only Child Ratings", "Not Only Child Ratings", title= "Lion King Ratings by Only Child")
+stats.mannwhitneyu(onlychild_ratings, notonlychild_ratings)
+
 
 # Percent of movies that differ by being an only child
 len(ratings_summary_df[ratings_summary_df["onlychild_pvalue"] < .05]) /MOVIE_COUNT
-# 0.1175
+# 0.1
 
 # Problem 7 and 8
-# Pvalue for Shrek
+# Pvalue for Wallstreet
 ratings_summary_df[ratings_summary_df["movie"] == "The Wolf of Wall Street (2013)"]["socialeffect_pvalue"]
 # 0.117389
+alone_ratings, not_alone_ratings = group_comparison("The Wolf of Wall Street (2013)", "Movies are best enjoyed alone (1: Yes; 0: No; -1: Did not respond)",1,0)
+plot_movie_ratings(alone_ratings, not_alone_ratings, "Prefer Alone", "Prefer Groups", title= "The Wolf of Wall Street by Group Preference")
 
-# Percent of movies that differ by gender
+
+# Percent of movies that differ by social effect
 len(ratings_summary_df[ratings_summary_df["socialeffect_pvalue"] < .05]) /MOVIE_COUNT
-# 0.08
+# 0.0825
 
 # Problem 9
     
@@ -169,53 +184,20 @@ nemo_ratings = pd.read_sql(query, conn)
 
 # KS test on alone vs nemo
 stats.kstest(alone_nemo_ratings[alone], alone_nemo_ratings[nemo])
-# pvalue=2.2038507937682687e-10 so the distributions are not different
+# pvalue=2.2038507937682687e-10 so the distributions are different
 stats.kstest(alone_ratings[alone], nemo_ratings[nemo])
 # pvalue=6.379397182836346e-10
 
 plot_movie_ratings(alone_nemo_ratings[alone],alone_nemo_ratings[nemo],"Home Alone", "Finding Nemo", "Home Alone / Finding Nemo (Row Elimination)")
 plot_movie_ratings(alone_ratings[alone],nemo_ratings[nemo],"Home Alone", "Finding Nemo", "Home Alone / Finding Nemo (Element Elimination)")
 
+
+
+series_name = 'Star Wars'
+
+series_kruskal = {}
+
 # Problem 10
-# Get the Star Wars movies
-# starwars = [movie for movie in movies if "Star Wars" in movie]
-# print(starwars)
-
-# starwars_filter = ""
-# starwars_columns = ""
-# for i in range(len(starwars)):
-#     if i == 0:
-#         starwars_filter += f"`{starwars[i]}` is not null"
-#         starwars_columns += f"`{starwars[i]}`"
-#     else:
-#         starwars_filter += f" and `{starwars[i]}` is not null"
-#         starwars_columns +=  f", `{starwars[i]}`"
-        
-# print(starwars_filter)
-# print(starwars_columns)
-        
-# query = f"SELECT {starwars_columns} FROM movieRatings where {starwars_filter}" 
-# starwars_ratings = pd.read_sql(query, conn)
-
-# # Perform KS tests for all pairs of columns
-# results = []
-
-# # Get all combinations of columns
-# column_pairs = itertools.combinations(starwars_ratings.columns, 2)
-
-# for col1, col2 in column_pairs:
-#     ks_stat, p_value = stats.ks_2samp(starwars_ratings[col1], starwars_ratings[col2])
-#     results.append({
-#         'col1': col1,
-#         'col2': col2,
-#         'ks_stat': ks_stat,
-#         'p_value': p_value
-#     })
-
-# # Create a DataFrame to display results
-# results_df = pd.DataFrame(results)
-
-
 def series_comparison(series_name):
     series_list = [movie for movie in movies if series_name in movie]
     # print(harrypotter)
@@ -230,12 +212,16 @@ def series_comparison(series_name):
             filter += f" and `{series_list[i]}` is not null"
             columns +=  f", `{series_list[i]}`"
             
-    # print(starwars_filter)
-    # print(starwars_columns)
-            
     query = f"SELECT {columns} FROM movieRatings where {filter}" 
     ratings = pd.read_sql(query, conn)
+    
+    rating_groups = [ratings[col].values for col in ratings.columns]
 
+    
+    stat, p_value = stats.kruskal(*rating_groups)
+    series_kruskal[series_name] = p_value
+    
+    # Not needed but still interesting
     # Perform KS tests for all pairs of columns
     results = []
 
@@ -262,27 +248,10 @@ comparison_indiana = series_comparison("Indiana Jones")
 comparison_jurassic = series_comparison("Jurassic Park")
 comparison_pirates = series_comparison("Pirates of the Caribbean")
 comparison_toy = series_comparison("Toy Story")
-comparison_batman = series_comparison("‘Batman’")
+comparison_batman = series_comparison("Batman")
 
-
-
-# starwars_dict = {}
-        
-# for i in range(len(starwars)):
-#     starwars_dict[f'sw{i+1}'] = movie
-
-# query = f"SELECT `{alone}` FROM movieRatings where `{alone}` is not null"
-# alone_ratings = pd.read_sql(query, conn)
-# query = f"SELECT `{alone}`, `{nemo}` FROM movieRatings where `{nemo}` is not null"
-# nemo_ratings = pd.read_sql(query, conn)
-        
-# p_values_starwars = []
-# for (i, group1), (j, group2) in itertools.combinations(enumerate(groups), 2):
-#     ks_stat, p_value = stats.ks_2samp(group1, group2)
-#     p_values.append((f"Group {i+1} vs Group {j+1}", p_value))
-
-
-
+print(series_kruskal)
+# Most have differences but Harry Potter and Pirates don't
 
 
 # conn.close()
