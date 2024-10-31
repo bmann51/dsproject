@@ -49,10 +49,12 @@ def group_comparison(movie, filter, filter1_value, filter2_value):
     # Get the data for group1
     query = f"SELECT `{movie}` FROM movieRatings where `{filter}` = {filter1_value} and `{movie}` is not null"
     group1_ratings = pd.read_sql(query, conn)
+    group1_ratings = group1_ratings[movie].values.flatten()
         
     # Get the dat for group2
     query = f"SELECT `{movie}` FROM movieRatings where `{filter}` = {filter2_value} and `{movie}` is not null"
     group2_ratings = pd.read_sql(query, conn)
+    group2_ratings = group2_ratings[movie].values.flatten()
     
     # if plot_title != "":
     #     plot_movie_ratings(group1_ratings, group2_ratings, "female ratings", "male ratings", plot_title)
@@ -78,23 +80,34 @@ ratings_summary_df = pd.DataFrame({
     'sum': ratings_sum
 })
 
+# NO LONGER USING THIS, but still useful to see trends
+# Get the mean rating for each movie
 ratings_summary_df["mean"] = ratings_summary_df["sum"] / ratings_summary_df["count"]
 # print(ratings_summary_df)
 
 
-
-# Determine whether popular
+# Get median number of ratings
 median = ratings_summary_df["count"].median()
 ratings_summary_df = ratings_summary_df.reset_index()
 ratings_summary_df.columns = ['movie', 'count', 'sum', 'mean'] 
+
+# Determine whether popular
 ratings_summary_df['popular'] = ratings_summary_df['count'] >= median
 
-popular_movies = ratings_summary_df.loc[ratings_summary_df['popular'], 'mean']
-unpopular_movies = ratings_summary_df.loc[~ratings_summary_df['popular'], 'mean']
+# Get the index of the popular and unpopular movies
+popular_movies = ratings_summary_df[ratings_summary_df["popular"]].index
+unpopular_movies = ratings_summary_df[~ratings_summary_df["popular"]].index
+
+filtered_df = df.iloc[:, popular_movies]
+popular_ratings = filtered_df.melt(value_name='rating', var_name='movie')['rating'].dropna().reset_index(drop=True)
+
+filtered_df = df.iloc[:, unpopular_movies]
+unpopular_ratings = filtered_df.melt(value_name='rating', var_name='movie')['rating'].dropna().reset_index(drop=True)
+
 
 # Compare to see if it is significant
-stats.ttest_ind(popular_movies, unpopular_movies)
-# pvalue=2.2696530276564846e-52 which is absurdly small
+stats.mannwhitneyu(popular_ratings, unpopular_ratings)
+# pvalue=0 so yes there is a big difference
 
 
 # Problem 2
@@ -106,13 +119,34 @@ ratings_summary_df["year"] = ratings_summary_df["movie"].str[-5:-1].astype(int)
 median_year = ratings_summary_df["year"].median()
 ratings_summary_df['new'] = ratings_summary_df['year'] >= median_year
 
-new_movies = ratings_summary_df.loc[ratings_summary_df['new'], 'mean']
-old_movies = ratings_summary_df.loc[~ratings_summary_df['new'], 'mean']
+
+new_movies = ratings_summary_df[ratings_summary_df["new"]].index
+old_movies = ratings_summary_df[~ratings_summary_df["new"]].index
+
+filtered_df = df.iloc[:, popular_movies]
+new_ratings = filtered_df.melt(value_name='rating', var_name='movie')['rating'].dropna().reset_index(drop=True)
+
+filtered_df = df.iloc[:, unpopular_movies]
+old_ratings = filtered_df.melt(value_name='rating', var_name='movie')['rating'].dropna().reset_index(drop=True)
+
 
 # Copare to see if it is significant
-stats.ttest_ind(new_movies, old_movies)
-# pvalue=0.1091814139798275 We keep the null hypothesis
+stats.mannwhitneyu(new_ratings, old_ratings)
+# pvalue=0 so yes there is a big difference
 
+
+# NO LONGER USING THIS FOR PART 1 AND 2
+# NO LONGER USING THIS
+# popular_movies = ratings_summary_df.loc[ratings_summary_df['popular'], 'mean']
+# unpopular_movies = ratings_summary_df.loc[~ratings_summary_df['popular'], 'mean']
+# stats.mannwhitneyu(popular_movies, unpopular_movies)
+# 1.6971433120157929e-40
+
+# NO LONGER USING THIS
+# new_movies = ratings_summary_df.loc[ratings_summary_df['new'], 'mean']
+# old_movies = ratings_summary_df.loc[~ratings_summary_df['new'], 'mean']
+# stats.mannwhitneyu(new_movies, old_movies)
+# 0.10107004142172547 so keep the null hypothesis
 
 
 
@@ -122,40 +156,46 @@ movies = ratings_summary_df["movie"].tolist()
 # Run the list of movies through the fuction
 for movie in movies:
     group1_ratings, group2_ratings =group_comparison(movie, "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2)
-    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "genders_pvalue"] = stats.kstest(group1_ratings, group2_ratings)[1][0]
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "genders_pvalue"] = stats.kstest(group1_ratings, group2_ratings)[1]
     
     group1_ratings, group2_ratings =group_comparison(movie, "Are you an only child? (1: Yes; 0: No; -1: Did not respond)",1,0)
-    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "onlychild_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1][0]
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "onlychild_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1]
     
     group1_ratings, group2_ratings =group_comparison(movie, "Movies are best enjoyed alone (1: Yes; 0: No; -1: Did not respond)",1,0)
-    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "socialeffect_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1][0]
+    ratings_summary_df.loc[ratings_summary_df['movie'] == movie, "socialeffect_pvalue"] = stats.mannwhitneyu(group1_ratings, group2_ratings)[1]
     
 
 
 # Problem 3 and 4
 # Pvalue for Shrek
 ratings_summary_df[ratings_summary_df["movie"] == "Shrek (2001)"]["genders_pvalue"]
-# 0.050537
+# 0.056082
 female_ratings, male_ratings = group_comparison("Shrek (2001)", "Gender identity (1 = female; 2 = male; 3 = self-described)",1,2)
 plot_movie_ratings(female_ratings, male_ratings, "Female Ratings", "Male Ratings", title= "Shrek Ratings by Gender")
 
 
 # Percent of movies that differ by gender
-len(ratings_summary_df[ratings_summary_df["genders_pvalue"] < .05]) /MOVIE_COUNT
-# 0.16
+len(ratings_summary_df[ratings_summary_df["genders_pvalue"] < .005]) /MOVIE_COUNT
+# 0.0625
 
 # Problem 5 and 6
 # Pvalue for Lion King
 ratings_summary_df[ratings_summary_df["movie"] == "The Lion King (1994)"]["onlychild_pvalue"]
-# 0.040267
+# 0.043199
 onlychild_ratings, notonlychild_ratings = group_comparison("The Lion King (1994)", "Are you an only child? (1: Yes; 0: No; -1: Did not respond)",1,0)
 plot_movie_ratings(onlychild_ratings, notonlychild_ratings, "Only Child Ratings", "Not Only Child Ratings", title= "Lion King Ratings by Only Child")
+
+# Get statistics
+# Either way it is not significant, but much closer if two tailed
+stats.mannwhitneyu(onlychild_ratings, notonlychild_ratings, alternative='greater')
+# 0.97841909
 stats.mannwhitneyu(onlychild_ratings, notonlychild_ratings)
+# 04319872995682849
 
 
 # Percent of movies that differ by being an only child
-len(ratings_summary_df[ratings_summary_df["onlychild_pvalue"] < .05]) /MOVIE_COUNT
-# 0.1
+len(ratings_summary_df[ratings_summary_df["onlychild_pvalue"] < .005]) /MOVIE_COUNT
+# 0.0175
 
 # Problem 7 and 8
 # Pvalue for Wallstreet
@@ -164,13 +204,18 @@ ratings_summary_df[ratings_summary_df["movie"] == "The Wolf of Wall Street (2013
 alone_ratings, not_alone_ratings = group_comparison("The Wolf of Wall Street (2013)", "Movies are best enjoyed alone (1: Yes; 0: No; -1: Did not respond)",1,0)
 plot_movie_ratings(alone_ratings, not_alone_ratings, "Prefer Alone", "Prefer Groups", title= "The Wolf of Wall Street by Group Preference")
 
+# Get statistics
+# Either way it is not significant, but much closer if two tailed
+stats.mannwhitneyu(alone_ratings, not_alone_ratings, alternative='less')
+# 0.9436657996253056
+stats.mannwhitneyu(alone_ratings, not_alone_ratings)
+# 0.11276429332228913
 
 # Percent of movies that differ by social effect
-len(ratings_summary_df[ratings_summary_df["socialeffect_pvalue"] < .05]) /MOVIE_COUNT
-# 0.0825
+len(ratings_summary_df[ratings_summary_df["socialeffect_pvalue"] < .005]) /MOVIE_COUNT
+# 0.025
 
 # Problem 9
-    
 # Get the data for group1
 alone = "Home Alone (1990)"
 nemo = "Finding Nemo (2003)"
@@ -183,17 +228,20 @@ query = f"SELECT `{alone}`, `{nemo}` FROM movieRatings where `{nemo}` is not nul
 nemo_ratings = pd.read_sql(query, conn)
 
 # KS test on alone vs nemo
+# with row removal
 stats.kstest(alone_nemo_ratings[alone], alone_nemo_ratings[nemo])
 # pvalue=2.2038507937682687e-10 so the distributions are different
+
+# with element removal
 stats.kstest(alone_ratings[alone], nemo_ratings[nemo])
 # pvalue=6.379397182836346e-10
 
+# Plot both row and element removal
 plot_movie_ratings(alone_nemo_ratings[alone],alone_nemo_ratings[nemo],"Home Alone", "Finding Nemo", "Home Alone / Finding Nemo (Row Elimination)")
 plot_movie_ratings(alone_ratings[alone],nemo_ratings[nemo],"Home Alone", "Finding Nemo", "Home Alone / Finding Nemo (Element Elimination)")
 
 
 
-series_name = 'Star Wars'
 
 series_kruskal = {}
 
